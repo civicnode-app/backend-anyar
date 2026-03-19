@@ -1,14 +1,24 @@
-const { loginWithGoogle, getMe } = require("./auth.service");
+const { getGoogleAuthUrl, handleGoogleCallback, getMe } = require("./auth.service");
 const { success, error } = require("../../utils/response");
+const { FRONTEND_URL } = require("../../config/env");
 
-const googleLogin = async (req, res, next) => {
+const getGoogleUrl = (req, res, next) => {
   try {
-    const { code } = req.body;
-    if (!code)
-      return error(res, "Google OAuth code is required", 400, "MISSING_CODE");
+    const url = getGoogleAuthUrl();
+    return res.json({ url });
+  } catch (err) {
+    next(err);
+  }
+};
 
-    const result = await loginWithGoogle(code);
-    return success(res, result, 201);
+const googleCallback = async (req, res, next) => {
+  try {
+    const { code } = req.query;
+    if (!code)
+      return error(res, "Missing OAuth code", 400, "MISSING_CODE");
+
+    const access_token = await handleGoogleCallback(code);
+    return res.redirect(`${FRONTEND_URL}/sign-in?access_token=${access_token}`);
   } catch (err) {
     next(err);
   }
@@ -27,4 +37,4 @@ const me = async (req, res, next) => {
   }
 };
 
-module.exports = { googleLogin, logout, me };
+module.exports = { getGoogleUrl, googleCallback, logout, me };

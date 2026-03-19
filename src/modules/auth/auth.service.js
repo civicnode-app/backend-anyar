@@ -1,12 +1,34 @@
 const { OAuth2Client } = require("google-auth-library");
 const supabase = require("../../config/supabase");
 const { signToken } = require("../../utils/jwt");
-const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = require("../../config/env");
+const {
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  BACKEND_URL,
+} = require("../../config/env");
+
+const CALLBACK_URL = `${BACKEND_URL}/api/auth/google/callback`;
 
 // ── Google ────────────────────────────────────────────────────────────────────
 
-const loginWithGoogle = async (code) => {
-  const client = new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET);
+const getGoogleAuthUrl = () => {
+  const client = new OAuth2Client(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    CALLBACK_URL,
+  );
+  return client.generateAuthUrl({
+    access_type: "offline",
+    scope: ["email", "profile"],
+  });
+};
+
+const handleGoogleCallback = async (code) => {
+  const client = new OAuth2Client(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    CALLBACK_URL,
+  );
 
   const { tokens } = await client.getToken(code);
   const ticket = await client.verifyIdToken({
@@ -27,9 +49,7 @@ const loginWithGoogle = async (code) => {
 
   if (error) throw error;
 
-  const token = signToken({ user_id: user.id, role: "warga" });
-
-  return { token, user };
+  return signToken({ user_id: user.id, email, role: "warga" });
 };
 
 // ── Me ────────────────────────────────────────────────────────────────────────
@@ -58,4 +78,4 @@ const getMe = async (decoded) => {
   return data;
 };
 
-module.exports = { loginWithGoogle, getMe };
+module.exports = { getGoogleAuthUrl, handleGoogleCallback, getMe };
