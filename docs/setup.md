@@ -2,9 +2,9 @@
 
 ## Port
 
-| Service | URL |
-|---|---|
-| **Backend** (Express) | `http://localhost:3001` |
+| Service                | URL                     |
+| ---------------------- | ----------------------- |
+| **Backend** (Express)  | `http://localhost:3001` |
 | **Frontend** (Next.js) | `http://localhost:3000` |
 
 Backend digeser ke `3001` karena Next.js default jalan di `3000`.
@@ -35,6 +35,12 @@ Entry point Express. Urutan middleware penting:
 
 Sebelum testing Google OAuth, pastikan terdaftar di Google Cloud Console:
 
-- **Authorized redirect URIs:** `http://localhost:3000/auth/callback`
-- **Authorized JavaScript origins:** `http://localhost:3000`
+- **Authorized redirect URIs:** `http://localhost:3001/api/auth/google/callback`
+- **Authorized JavaScript origins:** tidak wajib diisi (flow kita tidak pakai Google JS SDK)
 - **OAuth consent screen:** status Testing dengan email developer didaftarkan sebagai test user
+
+---
+
+## README
+
+[`README.md`](../README.md) di root project berisi ringkasan lengkap: tech stack, struktur folder, cara menjalankan, flow auth, tabel endpoints, dan role system. Update README setiap ada perubahan signifikan di struktur atau endpoint.
