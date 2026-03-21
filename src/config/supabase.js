@@ -1,6 +1,6 @@
-const { createClient } = require("@supabase/supabase-js");
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = require("./env");
+import { createClient } from "@supabase/supabase-js";
+import { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } from "./env.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-module.exports = supabase;
+export default supabase;

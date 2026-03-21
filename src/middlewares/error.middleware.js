@@ -1,6 +1,6 @@
-const { NODE_ENV } = require("../config/env");
+import { NODE_ENV } from "../config/env.js";
 
-const errorHandler = (err, req, res, next) => {
+export const errorHandler = (err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal server error";
   const code = err.code || "INTERNAL_ERROR";
@@ -13,5 +13,3 @@ const errorHandler = (err, req, res, next) => {
 
   return res.status(status).json(body);
 };
-
-module.exports = { errorHandler };

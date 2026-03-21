@@ -1,4 +1,4 @@
-require("dotenv").config();
+import "dotenv/config";
 
 const required = [
   "SUPABASE_URL",
@@ -16,21 +16,19 @@ for (const key of required) {
   }
 }
 
-module.exports = {
-  PORT: process.env.PORT || 3000,
-  NODE_ENV: process.env.NODE_ENV || "development",
+export const PORT = process.env.PORT || 3001;
+export const NODE_ENV = process.env.NODE_ENV || "development";
 
-  SUPABASE_URL: process.env.SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+export const SUPABASE_URL = process.env.SUPABASE_URL;
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  JWT_SECRET: process.env.JWT_SECRET,
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "24h",
+export const JWT_SECRET = process.env.JWT_SECRET;
+export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "24h";
 
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
-  FRONTEND_URL: process.env.FRONTEND_URL,
-  BACKEND_URL: process.env.BACKEND_URL,
+export const FRONTEND_URL = process.env.FRONTEND_URL;
+export const BACKEND_URL = process.env.BACKEND_URL;
 
-  AI_SERVER_SECRET: process.env.AI_SERVER_SECRET,
-};
+export const AI_SERVER_SECRET = process.env.AI_SERVER_SECRET;

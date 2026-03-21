@@ -1,10 +1,10 @@
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
 
-const { PORT } = require("./config/env");
-const { errorHandler } = require("./middlewares/error.middleware");
-const authRouter = require("./modules/auth/auth.router");
+import { PORT } from "./config/env.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
+import authRouter from "./modules/auth/auth.router.js";
 
 const app = express();
 
@@ -20,4 +20,4 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-module.exports = app;
+export default app;

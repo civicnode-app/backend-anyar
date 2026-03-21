@@ -1,17 +1,17 @@
-const { OAuth2Client } = require("google-auth-library");
-const supabase = require("../../config/supabase");
-const { signToken } = require("../../utils/jwt");
-const {
+import { OAuth2Client } from "google-auth-library";
+import supabase from "../../config/supabase.js";
+import { signToken } from "../../utils/jwt.js";
+import {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   BACKEND_URL,
-} = require("../../config/env");
+} from "../../config/env.js";
 
 const CALLBACK_URL = `${BACKEND_URL}/api/auth/google/callback`;
 
 // ── Google ────────────────────────────────────────────────────────────────────
 
-const getGoogleAuthUrl = () => {
+export const getGoogleAuthUrl = () => {
   const client = new OAuth2Client(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
@@ -23,7 +23,7 @@ const getGoogleAuthUrl = () => {
   });
 };
 
-const handleGoogleCallback = async (code) => {
+export const handleGoogleCallback = async (code) => {
   const client = new OAuth2Client(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
@@ -54,7 +54,7 @@ const handleGoogleCallback = async (code) => {
 
 // ── Me ────────────────────────────────────────────────────────────────────────
 
-const getMe = async (decoded) => {
+export const getMe = async (decoded) => {
   if (decoded.role === "warga") {
     const { data, error } = await supabase
       .from("users")
@@ -77,5 +77,3 @@ const getMe = async (decoded) => {
     throw { status: 404, message: "Staff not found", code: "NOT_FOUND" };
   return data;
 };
-
-module.exports = { getGoogleAuthUrl, handleGoogleCallback, getMe };

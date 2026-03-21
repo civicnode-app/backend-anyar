@@ -1,12 +1,10 @@
-const jwt = require("jsonwebtoken");
-const { JWT_SECRET, JWT_EXPIRES_IN } = require("../config/env");
+import jwt from "jsonwebtoken";
+import { JWT_SECRET, JWT_EXPIRES_IN } from "../config/env.js";
 
-const signToken = (payload) => {
+export const signToken = (payload) => {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 };
 
-const verifyToken = (token) => {
+export const verifyToken = (token) => {
   return jwt.verify(token, JWT_SECRET);
 };
-
-module.exports = { signToken, verifyToken };

@@ -1,11 +1,11 @@
-const { Router } = require("express");
-const {
+import { Router } from "express";
+import {
   getGoogleUrl,
   googleCallback,
   logout,
   me,
-} = require("./auth.controller");
-const { authenticate } = require("../../middlewares/auth.middleware");
+} from "./auth.controller.js";
+import { authenticate } from "../../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -14,4 +14,4 @@ router.get("/google/callback", googleCallback);
 router.post("/logout", authenticate, logout);
 router.get("/me", authenticate, me);
 
-module.exports = router;
+export default router;

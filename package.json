@@ -2,6 +2,7 @@
   "name": "civicnode-backend",
   "version": "1.0.0",
   "description": "Backend for CivicNode AI — platform pengawasan lingkungan cerdas",
+  "type": "module",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",

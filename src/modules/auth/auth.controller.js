@@ -1,8 +1,8 @@
-const { getGoogleAuthUrl, handleGoogleCallback, getMe } = require("./auth.service");
-const { success, error } = require("../../utils/response");
-const { FRONTEND_URL } = require("../../config/env");
+import { getGoogleAuthUrl, handleGoogleCallback, getMe } from "./auth.service.js";
+import { success, error } from "../../utils/response.js";
+import { FRONTEND_URL } from "../../config/env.js";
 
-const getGoogleUrl = (req, res, next) => {
+export const getGoogleUrl = (req, res, next) => {
   try {
     const url = getGoogleAuthUrl();
     return res.json({ url });
@@ -11,7 +11,7 @@ const getGoogleUrl = (req, res, next) => {
   }
 };
 
-const googleCallback = async (req, res, next) => {
+export const googleCallback = async (req, res, next) => {
   try {
     const { code } = req.query;
     if (!code)
@@ -24,11 +24,11 @@ const googleCallback = async (req, res, next) => {
   }
 };
 
-const logout = (req, res) => {
+export const logout = (req, res) => {
   return success(res, { message: "Logged out successfully" });
 };
 
-const me = async (req, res, next) => {
+export const me = async (req, res, next) => {
   try {
     const data = await getMe(req.user);
     return success(res, data);
@@ -36,5 +36,3 @@ const me = async (req, res, next) => {
     next(err);
   }
 };
-
-module.exports = { getGoogleUrl, googleCallback, logout, me };
