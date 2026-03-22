@@ -2,15 +2,15 @@
 
 ## Komponen
 
-| Komponen | Peran |
-|---|---|
-| **User/Staff** | Pemilik wallet MetaMask |
-| **MetaMask** | Ekstensi browser yang menyimpan private key |
-| **Frontend** | Minta nonce, minta user sign, kirim ke backend |
-| **Backend** | Generate nonce, verifikasi signature, return JWT |
-| **`nonce`** | String random sekali pakai — "kupon taman hiburan" |
-| **`signature`** | Hasil sign nonce pakai private key — "sidik jari di kupon" |
-| **`wallet_address`** | Identitas publik wallet — "nomor KTP" |
+| Komponen             | Peran                                                      |
+| -------------------- | ---------------------------------------------------------- |
+| **User/Staff**       | Pemilik wallet MetaMask                                    |
+| **MetaMask**         | Ekstensi browser yang menyimpan private key                |
+| **Frontend**         | Minta nonce, minta user sign, kirim ke backend             |
+| **Backend**          | Generate nonce, verifikasi signature, return JWT           |
+| **`nonce`**          | String random sekali pakai — "kupon taman hiburan"         |
+| **`signature`**      | Hasil sign nonce pakai private key — "sidik jari di kupon" |
+| **`wallet_address`** | Identitas publik wallet — "nomor KTP"                      |
 
 ---
 
@@ -49,11 +49,11 @@
 private_key → (kurva eliptik) → public_key → (keccak256 hash) → wallet_address
 ```
 
-| Kunci | Ukuran | Sifat |
-|---|---|---|
-| **private_key** | 32 bytes | Rahasia mutlak, tidak pernah keluar dari MetaMask |
-| **public_key** | 64 bytes | Boleh dibagikan, diturunkan dari private_key |
-| **wallet_address** | 20 bytes | Hash dari public_key, yang beredar di blockchain |
+| Kunci              | Ukuran   | Sifat                                             |
+| ------------------ | -------- | ------------------------------------------------- |
+| **private_key**    | 32 bytes | Rahasia mutlak, tidak pernah keluar dari MetaMask |
+| **public_key**     | 64 bytes | Boleh dibagikan, diturunkan dari private_key      |
+| **wallet_address** | 20 bytes | Hash dari public_key, yang beredar di blockchain  |
 
 > `wallet_address` bukan `public_key` — wallet_address adalah 20 byte terakhir dari hasil hash keccak256 dari public_key. Ini lapisan proteksi tambahan jika suatu saat komputer quantum bisa serang kurva eliptik.
 
@@ -107,6 +107,7 @@ Nonce hanya berlaku sekali. Setelah dipakai, langsung dibuang.
 - **Kasir** = backend yang verifikasi
 
 Bocil random tidak bisa replay karena:
+
 1. Kuponnya sudah dipotong (nonce expired/used)
 2. Tidak bisa bikin kupon baru karena tidak punya sidik jari aslinya (private key)
 
@@ -117,6 +118,7 @@ Bocil random tidak bisa replay karena:
 Tidak ada endpoint registrasi untuk staff — ini by design. Hanya programmer/owner yang bisa tambah staff langsung via Supabase Dashboard. Ini mencegah sembarang orang bisa daftar sebagai admin/owner.
 
 Alur:
+
 1. Owner minta programmer tambah wallet_address ke tabel `staff`
 2. Baru bisa login via MetaMask
 
