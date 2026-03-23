@@ -144,8 +144,13 @@ Expire 24h, tidak ada refresh token — staff login ulang kalau expired.
 
 ## Catatan Implementasi
 
-### wallet_address case-insensitive
-Query ke tabel `staff` pakai `.ilike()` bukan `.eq()` karena wallet_address yang datang dari frontend lowercase, sedangkan yang tersimpan di DB bisa mixed case (EIP-55 checksum format).
+### wallet_address selalu lowercase
+Semua wallet_address distandardisasi ke lowercase di seluruh lapisan:
+- **nonceStore key**: `wallet_address.toLowerCase()`
+- **query DB**: pakai `key` (lowercase) dengan `.eq()`
+- **data di Supabase**: semua row sudah di-update via `UPDATE staff SET wallet_address = LOWER(wallet_address)`
+
+Jangan pakai mixed case atau checksum format (EIP-55) — simpan dan bandingkan selalu dalam lowercase.
 
 ### wallet_requestPermissions vs eth_requestAccounts
 Frontend pakai `wallet_requestPermissions` agar popup pilih akun **selalu muncul** setiap login, tidak langsung pakai akun yang sudah connected sebelumnya.
