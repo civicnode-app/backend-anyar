@@ -100,7 +100,7 @@ export const loginWithMetaMask = async (wallet_address, signature, nonce) => {
   const { data: staff, error } = await supabase
     .from("staff")
     .select()
-    .ilike("wallet_address", wallet_address)
+    .eq("wallet_address", key)
     .single();
 
   if (error || !staff)
