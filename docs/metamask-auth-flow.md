@@ -142,6 +142,36 @@ Expire 24h, tidak ada refresh token — staff login ulang kalau expired.
 
 ---
 
+## Catatan Implementasi
+
+### wallet_address case-insensitive
+Query ke tabel `staff` pakai `.ilike()` bukan `.eq()` karena wallet_address yang datang dari frontend lowercase, sedangkan yang tersimpan di DB bisa mixed case (EIP-55 checksum format).
+
+### wallet_requestPermissions vs eth_requestAccounts
+Frontend pakai `wallet_requestPermissions` agar popup pilih akun **selalu muncul** setiap login, tidak langsung pakai akun yang sudah connected sebelumnya.
+
+> Catatan: `wallet_requestPermissions` trigger bug BigNumber di Brave browser versi tertentu karena konflik dengan Brave Wallet. Gunakan Firefox atau Chrome untuk development.
+
+### Verifikasi via curl
+Flow backend sudah diverifikasi end-to-end via curl tanpa browser:
+```bash
+# 1. Minta nonce
+curl "http://localhost:3001/api/auth/nonce?address=0x..."
+
+# 2. Sign nonce (pakai ethers.js di Node)
+node -e "import('ethers').then(async ({ ethers }) => {
+  const wallet = new ethers.Wallet(PRIVATE_KEY);
+  console.log(await wallet.signMessage(NONCE));
+})"
+
+# 3. Login
+curl -X POST "http://localhost:3001/api/auth/metamask" \
+  -H "Content-Type: application/json" \
+  -d '{ "wallet_address": "0x...", "signature": "0x...", "nonce": "..." }'
+```
+
+---
+
 ## File yang Relevan
 
 - [`src/modules/auth/auth.service.js`](../src/modules/auth/auth.service.js) — `getNonce()`, `loginWithMetaMask()`
