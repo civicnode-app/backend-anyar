@@ -1,4 +1,4 @@
-import { getGoogleAuthUrl, handleGoogleCallback, getMe } from "./auth.service.js";
+import { getGoogleAuthUrl, handleGoogleCallback, getNonce, loginWithMetaMask, getMe } from "./auth.service.js";
 import { success, error } from "../../utils/response.js";
 import { FRONTEND_URL } from "../../config/env.js";
 
@@ -19,6 +19,30 @@ export const googleCallback = async (req, res, next) => {
 
     const access_token = await handleGoogleCallback(code);
     return res.redirect(`${FRONTEND_URL}/sign-in?access_token=${access_token}`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getMetaMaskNonce = (req, res, next) => {
+  try {
+    const { address } = req.query;
+    if (!address) return error(res, "Wallet address is required", 400, "MISSING_ADDRESS");
+    const nonce = getNonce(address);
+    return success(res, { nonce });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const metamaskLogin = async (req, res, next) => {
+  try {
+    const { wallet_address, signature, nonce } = req.body;
+    if (!wallet_address || !signature || !nonce)
+      return error(res, "wallet_address, signature, and nonce are required", 400, "MISSING_FIELDS");
+
+    const access_token = await loginWithMetaMask(wallet_address, signature, nonce);
+    return success(res, { access_token });
   } catch (err) {
     next(err);
   }
