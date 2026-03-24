@@ -2,7 +2,7 @@
 
 # 🌿 CivicNode AI — Backend
 
-**Platform pengawasan lingkungan cerdas berbasis AI & Blockchain**
+**Platform monitoring kebersihan lingkungan berbasis AI & Web3**
 
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white)
@@ -15,9 +15,9 @@
 
 ## 📖 Tentang Proyek
 
-CivicNode AI adalah sistem pengawasan lingkungan yang mendeteksi pelanggaran buang sampah sembarangan secara otomatis menggunakan CCTV + AI. Setiap bukti pelanggaran dikunci di blockchain Polygon agar tidak bisa dimanipulasi.
+CivicNode AI adalah sistem monitoring kebersihan lingkungan berbasis AI. CCTV yang terhubung ke AI server memantau zona secara real-time — mendeteksi keberadaan sampah, menghitung `zone_reputation`, dan mencatat setiap event deteksi ke dalam log.
 
-Backend ini bertanggung jawab atas seluruh logika bisnis — dari autentikasi user, menerima data deteksi dari AI server, hingga eksekusi transaksi blockchain.
+Fokus aplikasi adalah **monitoring real-time**, bukan pencatatan pelanggaran. Autentikasi MetaMask dipertahankan untuk unsur Web3 dan keamanan akses Admin/Owner.
 
 ---
 
@@ -25,11 +25,10 @@ Backend ini bertanggung jawab atas seluruh logika bisnis — dari autentikasi us
 
 | Layer | Teknologi |
 |---|---|
-| Runtime | Node.js + Express.js |
+| Runtime | Node.js (ES Modules) + Express.js |
 | Database | Supabase (PostgreSQL) |
 | Auth | Google OAuth (Warga) · MetaMask (Admin/Owner) |
-| Blockchain | Polygon PoS + Solidity |
-| Storage | IPFS (foto bukti pelanggaran) |
+| Web3 | ethers.js — verifikasi signature MetaMask |
 
 ---
 
@@ -48,12 +47,10 @@ src/
 │
 ├── modules/
 │   ├── auth/           ✅ selesai
-│   ├── pelanggaran/    🚧 coming soon
 │   ├── cctv/           🚧 coming soon
 │   ├── zona/           🚧 coming soon
-│   ├── web3/           🚧 coming soon
 │   ├── staff/          🚧 coming soon
-│   └── dashboard/      🚧 coming soon
+│   └── timeline-log/   🚧 coming soon
 │
 ├── utils/
 │   ├── jwt.js          → sign & verify JWT
@@ -89,6 +86,18 @@ Server berjalan di `http://localhost:3001`
 
 ---
 
+## 🔄 Arsitektur Data Flow
+
+```
+AI Server ──(POST /api/timeline-log)──→ Backend → simpan ke DB
+AI Server ──(web polling)─────────────→ Frontend → zone_reputation, confidence_score, active_detections
+Frontend  ──(GET /api/timeline-log)───→ Backend → ambil history log
+```
+
+`zone_reputation` dan `confidence_score` dikirim AI server **langsung ke frontend** (tidak lewat backend) untuk menghindari polling yang redundan.
+
+---
+
 ## 🔐 Auth Flow
 
 ### Warga — Google OAuth
@@ -103,7 +112,7 @@ GET  /api/auth/nonce            → minta nonce untuk ditandatangani
 POST /api/auth/metamask         → verifikasi signature → dapat JWT
 ```
 
-> Detail lengkap: [`docs/google-oauth-flow.md`](docs/google-oauth-flow.md)
+> Detail lengkap: [`docs/google-oauth-flow.md`](docs/google-oauth-flow.md) · [`docs/metamask-auth-flow.md`](docs/metamask-auth-flow.md)
 
 ---
 
@@ -115,13 +124,18 @@ POST /api/auth/metamask         → verifikasi signature → dapat JWT
 |---|---|---|---|
 | GET | `/auth/google` | Public | ✅ |
 | GET | `/auth/google/callback` | Public | ✅ |
+| GET | `/auth/nonce` | Public | ✅ |
+| POST | `/auth/metamask` | Public | ✅ |
 | GET | `/auth/me` | Warga+ | ✅ |
 | POST | `/auth/logout` | Warga+ | ✅ |
-| GET | `/pelanggaran` | Warga+ | 🚧 |
+| POST | `/timeline-log` | AI only | 🚧 |
+| GET | `/timeline-log` | Warga+ | 🚧 |
 | GET | `/cctv` | Admin+ | 🚧 |
+| POST | `/cctv` | Owner | 🚧 |
 | GET | `/zona` | Warga+ | 🚧 |
-| GET | `/web3/:hash` | Warga+ | 🚧 |
-| GET | `/dashboard/stats` | Warga+ | 🚧 |
+| POST | `/zona` | Owner | 🚧 |
+| GET | `/staff` | Admin+ | 🚧 |
+| POST | `/staff` | Owner | 🚧 |
 
 ---
 
@@ -142,9 +156,6 @@ GOOGLE_CLIENT_SECRET=
 FRONTEND_URL=http://localhost:3000
 BACKEND_URL=http://localhost:3001
 
-POLYGON_RPC_URL=
-CONTRACT_ADDRESS=
-
 AI_SERVER_SECRET=
 ```
 
@@ -155,9 +166,9 @@ AI_SERVER_SECRET=
 | Role | Auth | Akses |
 |---|---|---|
 | **Guest** | — | Landing page only |
-| **Warga** | Google OAuth | Read-only dashboard & data |
-| **Admin** | MetaMask | + CCTV, export data |
-| **Owner** | MetaMask | Full access + approve blockchain |
+| **Warga** | Google OAuth | Read-only dashboard & timeline log |
+| **Admin** | MetaMask | + Kelola CCTV, export data |
+| **Owner** | MetaMask | Full access + kelola zona & staff |
 
 ---
 

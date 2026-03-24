@@ -2,13 +2,14 @@
 
 ## 🧠 Project Overview
 
-Platform pengawasan lingkungan cerdas — CCTV + AI deteksi buang sampah sembarangan, bukti pelanggaran dikunci di blockchain.
+Platform monitoring kebersihan lingkungan berbasis AI — CCTV + AI server mendeteksi sampah secara real-time, hasilnya dicatat sebagai log dan ditampilkan di dashboard. Fokus utama adalah **monitoring**, bukan pencatatan pelanggaran atau penghakiman pelanggar.
 
-**Stack Backend:** Node.js + Express.js  
-**Database:** Supabase (PostgreSQL)  
-**Blockchain:** Polygon PoS + Solidity  
-**Storage:** IPFS (foto bukti pelanggaran)  
+Autentikasi MetaMask tetap dipertahankan untuk unsur Web3 dan keamanan login Admin/Owner.
+
+**Stack Backend:** Node.js (ES Modules) + Express.js
+**Database:** Supabase (PostgreSQL)
 **Auth:** Google OAuth (Warga) + MetaMask (Admin/Owner)
+**Blockchain integration:** ethers.js — hanya untuk verifikasi signature MetaMask, bukan transaksi
 
 ---
 
@@ -28,17 +29,11 @@ civicnode-backend/
 │   │   └── error.middleware.js     → global error handler
 │   │
 │   ├── modules/
-│   │   ├── auth/
-│   │   │   ├── auth.router.js
-│   │   │   ├── auth.controller.js
-│   │   │   └── auth.service.js
-│   │   │
-│   │   ├── pelanggaran/       → implement belakangan
-│   │   ├── cctv/              → implement belakangan
-│   │   ├── zona/              → implement belakangan
-│   │   ├── web3/              → implement belakangan
-│   │   ├── staff/             → implement belakangan
-│   │   └── dashboard/         → implement belakangan
+│   │   ├── auth/              ✅ selesai
+│   │   ├── cctv/              🚧 coming soon
+│   │   ├── zona/              🚧 coming soon
+│   │   ├── staff/             🚧 coming soon
+│   │   └── timeline-log/      🚧 coming soon
 │   │
 │   ├── utils/
 │   │   ├── jwt.js             → sign + verify JWT
@@ -80,14 +75,15 @@ created_at  TIMESTAMP DEFAULT now()
 
 ```sql
 id               UUID PRIMARY KEY DEFAULT gen_random_uuid()
-wallet_address   VARCHAR UNIQUE NOT NULL
+wallet_address   VARCHAR UNIQUE NOT NULL   -- selalu lowercase
 full_name        VARCHAR NOT NULL
 role             ENUM('admin', 'owner') NOT NULL
 created_at       TIMESTAMP DEFAULT now()
 ```
 
-> Owner pertama → seed manual via Supabase Dashboard  
+> Owner pertama → seed manual via Supabase Dashboard
 > Avatar → generate Jazzicon dari wallet_address di frontend
+> Tidak ada endpoint registrasi staff — hanya Owner yang bisa tambah Admin via `/api/staff`
 
 ### `zona`
 
@@ -98,8 +94,7 @@ deskripsi   VARCHAR
 created_at  TIMESTAMP DEFAULT now()
 ```
 
-> Skor zona = dihitung dinamis, TIDAK disimpan di DB  
-> Formula: `skor = 100 - (jumlah_pelanggaran_30hari × bobot)`
+> `zone_reputation` dan `confidence_score` **tidak disimpan di DB** — dihitung real-time oleh AI server dan dikirim langsung ke frontend via web polling
 
 ### `cctv`
 
@@ -116,59 +111,62 @@ status        BOOLEAN DEFAULT true
 created_at    TIMESTAMP DEFAULT now()
 ```
 
-### `data_pelanggaran`
+### `timeline_log` ← menggantikan `data_pelanggaran` yang lama
 
 ```sql
-id                UUID PRIMARY KEY DEFAULT gen_random_uuid()
-cctv_id           UUID REFERENCES cctv(id) NOT NULL
-foto_url          VARCHAR NOT NULL      -- link IPFS
-ipfs_hash         VARCHAR NOT NULL      -- untuk verifikasi integritas
-waktu_kejadian    TIMESTAMP NOT NULL
-confidence_score  DECIMAL NOT NULL      -- 0.00 - 100.00
-created_at        TIMESTAMP DEFAULT now()
+id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
+cctv_id         UUID REFERENCES cctv(id) NOT NULL
+zona_id         UUID REFERENCES zona(id) NOT NULL   -- denormalized untuk query cepat
+jenis_objek     VARCHAR NOT NULL                    -- dinamis dari AI: "kaleng kosong", "bungkus permen", dll
+waktu_kejadian  TIMESTAMP NOT NULL
+created_at      TIMESTAMP DEFAULT now()
 ```
 
 > Immutable — tidak ada endpoint DELETE
+> `jenis_objek` bersifat dinamis, tergantung hasil interpretasi model AI terhadap objek yang terdeteksi
 
-### `web3_log`
+---
 
-```sql
-id                  UUID PRIMARY KEY DEFAULT gen_random_uuid()
-pelanggaran_id      UUID REFERENCES data_pelanggaran(id) UNIQUE NOT NULL
-blockchain_status   ENUM('pending', 'verified') DEFAULT 'pending'
-blockchain_tx_hash  VARCHAR
-approved_by         UUID REFERENCES staff(id)
-approved_at         TIMESTAMP
-created_at          TIMESTAMP DEFAULT now()
+## 🔄 Arsitektur Data Flow
+
+```
+AI Server ──(POST /api/timeline-log)──→ Backend → simpan ke DB
+AI Server ──(web polling)─────────────→ Frontend langsung → tampil zone_reputation, confidence_score, active_detections
+Frontend  ──(GET /api/timeline-log)───→ Backend → ambil history log
 ```
 
-> UNIQUE di pelanggaran_id → one-to-one dengan data_pelanggaran  
-> Immutable — tidak ada UPDATE/DELETE
+**Yang dikirim AI server ke backend (per event deteksi):**
+- `cctv_id` — kamera yang mendeteksi
+- `zona_id` — zona yang dipantau
+- `jenis_objek` — jenis sampah yang terdeteksi
+- `waktu_kejadian` — timestamp deteksi
+
+**Yang dikirim AI server langsung ke frontend (bypass backend):**
+- `zone_reputation` — reputasi zona (real-time, tidak disimpan)
+- `confidence_score` — rata-rata skor keyakinan AI terhadap objek yang terdeteksi (berguna sebagai indikator kualitas kamera)
+- `active_detections` — jumlah objek sampah yang sedang terdeteksi
 
 ---
 
 ## 👥 Role System
 
-| Role      | Auth Method  | Akses                                                         |
-| --------- | ------------ | ------------------------------------------------------------- |
-| **Guest** | —            | Landing page only                                             |
-| **Warga** | Google OAuth | Read-only dashboard, pelanggaran, zona, verifikasi blockchain |
-| **Admin** | MetaMask     | + Akses CCTV, export data, modifikasi DB (perlu izin Owner)   |
-| **Owner** | MetaMask     | Full access + approve blockchain                              |
+| Role | Auth | Akses |
+|---|---|---|
+| **Guest** | — | Landing page only |
+| **Warga** | Google OAuth | Read-only dashboard & timeline log |
+| **Admin** | MetaMask | + Akses & kelola CCTV, export data |
+| **Owner** | MetaMask | Full access + kelola zona & staff |
 
 ### Hak Akses Detail
 
 | Resource              | Warga | Admin | Owner |
 | --------------------- | :---: | :---: | :---: |
-| Lihat dashboard/stats |  ✅   |  ✅   |  ✅   |
-| Lihat pelanggaran     |  ✅   |  ✅   |  ✅   |
-| Export pelanggaran    |  ❌   |  ✅   |  ✅   |
-| Lihat CCTV            |  ❌   |  ✅   |  ✅   |
-| Tambah/hapus CCTV     |  ❌   |  ❌   |  ✅   |
+| Lihat dashboard       |  ✅   |  ✅   |  ✅   |
+| Lihat timeline log    |  ✅   |  ✅   |  ✅   |
 | Lihat zona            |  ✅   |  ✅   |  ✅   |
 | Tambah/hapus zona     |  ❌   |  ❌   |  ✅   |
-| Verifikasi blockchain |  ✅   |  ✅   |  ✅   |
-| Approve blockchain    |  ❌   |  ❌   |  ✅   |
+| Lihat CCTV            |  ❌   |  ✅   |  ✅   |
+| Tambah/hapus CCTV     |  ❌   |  ❌   |  ✅   |
 | Lihat staff           |  ❌   |  ✅   |  ✅   |
 | Tambah/hapus staff    |  ❌   |  ❌   |  ✅   |
 
@@ -179,145 +177,90 @@ created_at          TIMESTAMP DEFAULT now()
 ### Google (Warga)
 
 ```
-POST /api/auth/google
-Body: { code: "google_oauth_code" }
+GET /api/auth/google
+→ redirect ke Google OAuth
 
-Flow:
-1. Tukar code → dapat { email, name, avatar } dari Google
-2. Cek tabel users: email ada? → ambil data / buat baru (upsert)
-3. Sign JWT: { user_id, email, role: "warga" }
-4. Return JWT
+GET /api/auth/google/callback?code=...
+→ tukar code → upsert tabel users → sign JWT → redirect frontend dengan token
 ```
 
 ### MetaMask (Admin + Owner)
 
 ```
+GET /api/auth/nonce?address=0x...
+→ generate nonce (single-use, expire 5 menit) → return nonce
+
 POST /api/auth/metamask
 Body: { wallet_address, signature, nonce }
-
-Flow:
-1. Verify signature: recoverAddress(nonce, signature) === wallet_address
-2. Cek tabel staff: wallet_address ada? → kalau tidak → 401
-3. Sign JWT: { staff_id, wallet_address, role: "admin"|"owner" }
-4. Return JWT
+→ verifikasi signature via ethers.verifyMessage
+→ cek tabel staff → sign JWT → return token
 ```
-
-> Nonce = random string yang di-generate backend, dikirim ke frontend sebelum sign  
-> Endpoint untuk request nonce: `GET /api/auth/nonce?address=0x...`
 
 ### JWT Payload
 
 ```json
 // Warga
-{ "user_id": "uuid", "role": "warga", "type": "user" }
+{ "user_id": "uuid", "email": "...", "role": "warga" }
 
 // Admin / Owner
-{ "staff_id": "uuid", "wallet_address": "0x...", "role": "admin|owner", "type": "staff" }
+{ "staff_id": "uuid", "wallet_address": "0x...", "role": "admin|owner" }
 ```
 
 ---
 
 ## 🛣️ API Endpoints
 
-**Base URL:** `http://localhost:3000/api`
+**Base URL:** `http://localhost:3001/api`
 
-### Auth
-
-```
-GET  /api/auth/nonce           → generate nonce untuk MetaMask sign
-POST /api/auth/google          → login Warga
-POST /api/auth/metamask        → login Admin/Owner
-POST /api/auth/logout          → logout
-GET  /api/auth/me              → get current user
-```
-
-### Pelanggaran
+### Auth ✅
 
 ```
-POST /api/pelanggaran          → AI server kirim deteksi baru [AI only]
-GET  /api/pelanggaran          → list semua [Warga+]
-GET  /api/pelanggaran/:id      → detail [Warga+]
-GET  /api/pelanggaran/export   → export CSV [Admin+]
-
-Query params: ?zona_id=&cctv_id=&from=&to=&status=
+GET  /api/auth/google            → public
+GET  /api/auth/google/callback   → public
+GET  /api/auth/nonce             → public
+POST /api/auth/metamask          → public
+GET  /api/auth/me                → Warga+
+POST /api/auth/logout            → Warga+
 ```
 
-### CCTV
+### Timeline Log 🚧
 
 ```
-POST   /api/cctv                 → tambah CCTV [Owner]
-GET    /api/cctv                 → list semua [Admin+]
-GET    /api/cctv/active          → list aktif + stream_url [AI only]
-GET    /api/cctv/:id             → detail [Admin+]
-GET    /api/cctv/:id/pelanggaran → pelanggaran dari CCTV ini [Admin+]
-GET    /api/cctv/:id/summary     → CCTV + stats [Admin+]
-PATCH  /api/cctv/:id             → update [Admin+]
-DELETE /api/cctv/:id             → hapus [Owner]
+POST /api/timeline-log           → AI server kirim log deteksi [AI only — pakai AI_SERVER_SECRET]
+GET  /api/timeline-log           → list history log [Warga+]
+
+Query params GET: ?zona_id=&cctv_id=&from=&to=&limit=
 ```
 
-### Zona
+### CCTV 🚧
 
 ```
-POST   /api/zona              → tambah zona [Owner]
-GET    /api/zona              → list semua [Warga+]
-GET    /api/zona/:id          → detail [Warga+]
-GET    /api/zona/:id/cctv     → CCTV di zona ini [Admin+]
-GET    /api/zona/:id/skor     → Node Reputation score [Warga+]
-GET    /api/zona/:id/summary  → zona + stats [Warga+]
-PATCH  /api/zona/:id          → update [Owner]
-DELETE /api/zona/:id          → hapus [Owner]
+POST   /api/cctv                → tambah CCTV [Owner]
+GET    /api/cctv                → list semua [Admin+]
+GET    /api/cctv/active         → list aktif + stream_url [AI only]
+GET    /api/cctv/:id            → detail [Admin+]
+PATCH  /api/cctv/:id            → update [Admin+]
+DELETE /api/cctv/:id            → hapus [Owner]
 ```
 
-### Web3
+### Zona 🚧
 
 ```
-GET  /api/web3                    → semua log [Owner]
-GET  /api/web3/:hash              → verifikasi hash [Warga+]
-POST /api/web3/pelanggaran/:id    → approve ke blockchain [Owner]
-
-Query params: ?status=pending|verified
+POST   /api/zona                → tambah zona [Owner]
+GET    /api/zona                → list semua [Warga+]
+GET    /api/zona/:id            → detail + list CCTV [Warga+]
+PATCH  /api/zona/:id            → update [Owner]
+DELETE /api/zona/:id            → hapus [Owner]
 ```
 
-### Staff
+### Staff 🚧
 
 ```
-GET    /api/staff       → list [Admin+]
-GET    /api/staff/:id   → detail [Admin+]
-POST   /api/staff       → tambah Admin [Owner]
-PATCH  /api/staff/:id   → update [Owner]
-DELETE /api/staff/:id   → hapus [Owner]
-```
-
-### Dashboard
-
-```
-GET /api/dashboard/stats     → statistik global [Warga+]
-GET /api/dashboard/timeline  → timeline log dengan filter [Warga+]
-
-Query params /timeline: ?from=&to=&zona_id=&cctv_id=
-```
-
----
-
-## 📦 Dependencies (package.json)
-
-```json
-{
-  "dependencies": {
-    "express": "^4.18.x",
-    "@supabase/supabase-js": "^2.x",
-    "jsonwebtoken": "^9.x",
-    "ethers": "^6.x",
-    "google-auth-library": "^9.x",
-    "dotenv": "^16.x",
-    "cors": "^2.x",
-    "helmet": "^7.x",
-    "express-validator": "^7.x"
-  },
-  "devDependencies": {
-    "nodemon": "^3.x"
-  }
-}
+GET    /api/staff               → list [Admin+]
+GET    /api/staff/:id           → detail [Admin+]
+POST   /api/staff               → tambah Admin [Owner]
+PATCH  /api/staff/:id           → update [Owner]
+DELETE /api/staff/:id           → hapus [Owner]
 ```
 
 ---
@@ -326,7 +269,7 @@ Query params /timeline: ?from=&to=&zona_id=&cctv_id=
 
 ```env
 # Server
-PORT=3000
+PORT=3001
 NODE_ENV=development
 
 # Supabase
@@ -341,31 +284,12 @@ JWT_EXPIRES_IN=24h
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 
-# Blockchain
-POLYGON_RPC_URL=
-CONTRACT_ADDRESS=
-OWNER_PRIVATE_KEY=       # untuk signing transaksi dari backend (opsional)
+# URLs
+FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://localhost:3001
 
 # AI Server
 AI_SERVER_SECRET=        # shared secret untuk validasi request dari AI server
-```
-
----
-
-## ✅ Urutan Implementasi (Auth dulu)
-
-```
-1. package.json + install deps
-2. .env + env.js (load & validasi)
-3. config/supabase.js
-4. utils/jwt.js
-5. utils/response.js
-6. auth.service.js
-7. auth.controller.js
-8. auth.router.js
-9. middlewares/auth.middleware.js
-10. middlewares/error.middleware.js
-11. app.js
 ```
 
 ---
