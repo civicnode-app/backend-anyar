@@ -11,21 +11,27 @@ Fokus: **monitoring**, bukan pencatatan pelanggaran atau penghakiman pelanggar.
 ## Data Flow
 
 ```
-┌─────────────┐   POST /api/timeline-log    ┌─────────────┐
-│  AI Server  │ ─────────────────────────→  │   Backend   │
-│             │                             │  (Express)  │
-│             │   web polling               │             │
-│             │ ───────────────────────→    │             │
-│             │   zone_reputation           └──────┬──────┘
-│             │   confidence_score                 │ GET /api/timeline-log
-│             │   active_detections                ↓
-└─────────────┘                             ┌─────────────┐
-                                            │  Frontend   │
-                                            │  (Next.js)  │
-                                            └─────────────┘
+┌─────────────┐   POST /api/timeline-log      ┌─────────────┐
+│  AI Server  │ ──────────────────────────→   │   Backend   │
+│             │                               │  (Express)  │
+│             │   POST /api/realtime-stats    │             │
+│             │ ──────────────────────────→   │  in-memory  │
+│             │                               │  Map + DB   │
+└─────────────┘                               └──────┬──────┘
+                                                     │ GET /api/timeline-log
+                                                     │ GET /api/zona
+                                                     │ GET /api/cctv
+                                                     ↓
+                                              ┌─────────────┐
+                                              │  Frontend   │
+                                              │  (Next.js)  │
+                                              └─────────────┘
 ```
 
-### AI Server → Backend (per event deteksi)
+Backend adalah **satu-satunya pintu masuk** bagi frontend — tidak ada komunikasi langsung antara frontend dan AI server.
+
+### AI Server → Backend: Event Deteksi
+
 - Endpoint: `POST /api/timeline-log`
 - Auth: header `x-ai-secret: <AI_SERVER_SECRET>`
 - Payload yang disimpan ke DB:
@@ -39,29 +45,79 @@ Fokus: **monitoring**, bukan pencatatan pelanggaran atau penghakiman pelanggar.
 }
 ```
 
-### AI Server → Frontend (real-time, bypass backend)
-- Metode: web polling dari frontend ke AI server langsung
-- Data: `zone_reputation`, `confidence_score`, `active_detections`
-- Tidak disimpan di database backend — murni state real-time dari AI
+### AI Server → Backend: Real-time Stats
 
-### Frontend → Backend (history log)
-- Endpoint: `GET /api/timeline-log`
-- Auth: JWT token (Warga+)
-- Query params: `?zona_id=&cctv_id=&from=&to=&limit=`
+- Endpoint: `POST /api/realtime-stats`
+- Auth: header `x-ai-secret: <AI_SERVER_SECRET>`
+- Dikirim AI server secara periodik (per kamera aktif)
+- Payload:
+
+```json
+{
+  "cctv_id": "uuid",
+  "zona_id": "uuid",
+  "active_detections": 3,
+  "confidence_score": 0.92,
+  "zone_reputation": 85.0
+}
+```
+
+### Backend: Write-back Cache (Periodic Flush)
+
+Real-time stats **tidak langsung ditulis ke DB** — disimpan dulu di in-memory Map, lalu di-flush ke DB setiap 5 detik via `setInterval`. Ini mencegah AI server menyebabkan query spam ke database.
+
+```
+AI Server POST stats → update in-memory Map (instant)
+setInterval(5000)    → flush Map ke DB (batched, hanya kalau ada perubahan)
+```
+
+- `active_detections` dan `confidence_score` → flush ke tabel `cctv`
+- `zone_reputation` → flush ke tabel `zona`
+
+Saat backend restart, in-memory Map kosong — tapi nilai terakhir tetap tersedia dari DB sebagai fallback, dan AI server akan repopulate dalam 5 detik berikutnya.
+
+### Frontend → Backend
+
+- `GET /api/timeline-log` — history log deteksi (Auth: JWT Warga+)
+  - Query params: `?zona_id=&cctv_id=&from=&to=&limit=`
+- `GET /api/zona` — list zona termasuk kolom `zone_reputation`
+- `GET /api/cctv` — list kamera termasuk kolom `active_detections` dan `confidence_score`
 
 ---
 
-## Kenapa Stats Real-time Bypass Backend?
+## Kenapa Backend Jadi Single Gateway?
 
-`zone_reputation`, `confidence_score`, dan `active_detections` dihitung real-time oleh AI server. Kalau dilewatkan backend dulu:
-- Frontend polling ke backend → backend polling ke AI → redundan
-- Menambah latency yang tidak perlu
+Alternatif sebelumnya adalah frontend langsung polling AI server untuk real-time stats. Ini ditolak karena:
 
-Solusi: frontend langsung polling AI server untuk stats real-time. Backend hanya menerima dan menyimpan log event.
+1. **Frontend harus tahu dua URL** — `BACKEND_URL` dan `AI_SERVER_URL`. Kalau AI server pindah, frontend ikut kena.
+2. **AI server jadi dua peran** — inferencing + melayani HTTP request frontend (harus handle CORS, auth, rate limiting).
+3. **Celah keamanan** — endpoint AI server yang di-polling frontend tidak bisa diproteksi JWT seperti endpoint backend.
+4. **Tidak konsisten** — historical data dari backend, real-time stats dari AI server. Sumber data terbelah.
+
+Dengan backend sebagai single gateway: frontend hanya kenal satu server, keamanan terpusat, dan AI server fokus pada tugasnya.
 
 ---
 
 ## Database Schema
+
+### `cctv` (penambahan kolom real-time)
+
+Dua kolom baru ditambahkan untuk menyimpan state real-time dari AI server:
+
+```sql
+active_detections   INT DEFAULT 0        -- jumlah bounding box sampah yang terdeteksi di frame saat ini
+confidence_score    DECIMAL DEFAULT 0    -- rata-rata skor keyakinan AI terhadap deteksi aktif (0.0 - 1.0)
+```
+
+Nilai ini diupdate via write-back flush dari in-memory Map setiap 5 detik.
+
+### `zona` (penambahan kolom real-time)
+
+```sql
+zone_reputation     DECIMAL DEFAULT 100  -- skor kebersihan zona (0-100), dihitung AI server
+```
+
+Nilai ini diupdate via write-back flush dari in-memory Map setiap 5 detik.
 
 ### `timeline_log` (menggantikan `data_pelanggaran` lama)
 
@@ -85,25 +141,35 @@ created_at      TIMESTAMP DEFAULT now()
 
 ---
 
+## `active_detections` — Apa Artinya?
+
+Jumlah bounding box sampah yang sedang terdeteksi di frame video CCTV saat ini. Bersifat ephemeral — bisa berubah setiap frame.
+
+**Kegunaan:** Membantu user di frontend mengetahui berapa kotak sampah yang terlihat di video streaming tanpa harus menghitung manual.
+
+Disimpan di kolom `cctv.active_detections`, diupdate via write-back flush setiap 5 detik.
+
+---
+
 ## `confidence_score` — Apa Artinya?
 
-`confidence_score` adalah rata-rata skor keyakinan AI terhadap semua objek yang sedang terdeteksi sebagai sampah di area kamera.
+Rata-rata skor keyakinan AI terhadap semua bounding box sampah yang sedang aktif terdeteksi di kamera tersebut (0.0 – 1.0).
 
 **Kegunaan:**
 - Nilai tinggi = AI yakin dengan deteksinya
-- Nilai rendah = bisa jadi kamera bermasalah (buram, berdebu, rusak sebagian) sehingga model AI kurang akurat
+- Nilai rendah = bisa jadi kamera bermasalah (buram, berdebu, rusak sebagian)
 
-Ini berguna sebagai **indikator kualitas kamera**, bukan hanya indikator keberadaan sampah.
+Berguna sebagai **indikator kualitas kamera**, bukan hanya indikator keberadaan sampah. Disimpan di kolom `cctv.confidence_score`.
 
 ---
 
 ## `zone_reputation` — Apa Artinya?
 
-`zone_reputation` adalah skor reputasi kebersihan suatu zona, dihitung real-time oleh AI server berdasarkan frekuensi dan intensitas deteksi sampah.
+Skor reputasi kebersihan suatu zona (0–100), dihitung oleh AI server berdasarkan frekuensi dan intensitas deteksi sampah.
 
 Semakin sering sampah terdeteksi → skor turun. Zona yang bersih konsisten → skor tinggi.
 
-Tidak disimpan di database — selalu dihitung fresh oleh AI.
+Disimpan di kolom `zona.zone_reputation`, diupdate via write-back flush setiap 5 detik.
 
 ---
 
@@ -125,9 +191,10 @@ Backend memvalidasi header ini sebelum menerima data di endpoint `POST /api/time
 |---|---|---|
 | `auth` | ✅ Selesai | Google OAuth + MetaMask |
 | `timeline-log` | 🚧 Next | Terima log dari AI, serve ke frontend |
+| `realtime-stats` | 🚧 Next | Terima stats dari AI, write-back flush ke DB |
 | `cctv` | 🚧 Planned | CRUD kamera |
 | `zona` | 🚧 Planned | CRUD zona |
 | `staff` | 🚧 Planned | CRUD Admin/Owner |
 | ~~`pelanggaran`~~ | ❌ Dihapus | Diganti `timeline-log` |
 | ~~`web3`~~ | ❌ Dihapus | Tidak ada blockchain sync |
-| ~~`dashboard`~~ | ❌ Dihapus | Stats real-time langsung dari AI ke frontend |
+| ~~`dashboard`~~ | ❌ Dihapus | Stats tidak lagi bypass ke frontend langsung |

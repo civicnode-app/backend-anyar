@@ -88,27 +88,28 @@ created_at       TIMESTAMP DEFAULT now()
 ### `zona`
 
 ```sql
-id          UUID PRIMARY KEY DEFAULT gen_random_uuid()
-nama        VARCHAR NOT NULL
-deskripsi   VARCHAR
-created_at  TIMESTAMP DEFAULT now()
+id               UUID PRIMARY KEY DEFAULT gen_random_uuid()
+nama             VARCHAR NOT NULL
+deskripsi        VARCHAR
+zone_reputation  DECIMAL DEFAULT 100   -- skor kebersihan zona (0–100), di-flush dari in-memory tiap 5 detik
+created_at       TIMESTAMP DEFAULT now()
 ```
-
-> `zone_reputation` dan `confidence_score` **tidak disimpan di DB** — dihitung real-time oleh AI server dan dikirim langsung ke frontend via web polling
 
 ### `cctv`
 
 ```sql
-id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
-nama          VARCHAR NOT NULL
-zona_id       UUID REFERENCES zona(id) NOT NULL
-jenis_kamera  ENUM('cctv', 'ponsel') NOT NULL
-stream_url    VARCHAR NOT NULL
-ip_address    VARCHAR NOT NULL
-latitude      DECIMAL
-longitude     DECIMAL
-status        BOOLEAN DEFAULT true
-created_at    TIMESTAMP DEFAULT now()
+id                  UUID PRIMARY KEY DEFAULT gen_random_uuid()
+nama                VARCHAR NOT NULL
+zona_id             UUID REFERENCES zona(id) NOT NULL
+jenis_kamera        ENUM('cctv', 'ponsel') NOT NULL
+stream_url          VARCHAR NOT NULL
+ip_address          VARCHAR NOT NULL
+latitude            DECIMAL
+longitude           DECIMAL
+status              BOOLEAN DEFAULT true
+active_detections   INT DEFAULT 0        -- jumlah bounding box sampah aktif di frame, di-flush dari in-memory tiap 5 detik
+confidence_score    DECIMAL DEFAULT 0    -- rata-rata skor keyakinan AI (0.0–1.0), di-flush dari in-memory tiap 5 detik
+created_at          TIMESTAMP DEFAULT now()
 ```
 
 ### `timeline_log` ← menggantikan `data_pelanggaran` yang lama
@@ -129,22 +130,31 @@ created_at      TIMESTAMP DEFAULT now()
 
 ## 🔄 Arsitektur Data Flow
 
+Backend adalah **satu-satunya pintu masuk** bagi frontend — tidak ada komunikasi langsung antara frontend dan AI server.
+
 ```
-AI Server ──(POST /api/timeline-log)──→ Backend → simpan ke DB
-AI Server ──(web polling)─────────────→ Frontend langsung → tampil zone_reputation, confidence_score, active_detections
-Frontend  ──(GET /api/timeline-log)───→ Backend → ambil history log
+AI Server ──(POST /api/timeline-log)────→ Backend → simpan ke DB (timeline_log)
+AI Server ──(POST /api/realtime-stats)──→ Backend → in-memory Map → flush ke DB tiap 5 detik
+Frontend  ──(GET /api/timeline-log)─────→ Backend → ambil history log
+Frontend  ──(GET /api/zona)─────────────→ Backend → termasuk zone_reputation
+Frontend  ──(GET /api/cctv)─────────────→ Backend → termasuk active_detections, confidence_score
 ```
 
-**Yang dikirim AI server ke backend (per event deteksi):**
+**Yang dikirim AI server ke `POST /api/timeline-log` (per event deteksi):**
 - `cctv_id` — kamera yang mendeteksi
 - `zona_id` — zona yang dipantau
 - `jenis_objek` — jenis sampah yang terdeteksi
 - `waktu_kejadian` — timestamp deteksi
 
-**Yang dikirim AI server langsung ke frontend (bypass backend):**
-- `zone_reputation` — reputasi zona (real-time, tidak disimpan)
-- `confidence_score` — rata-rata skor keyakinan AI terhadap objek yang terdeteksi (berguna sebagai indikator kualitas kamera)
-- `active_detections` — jumlah objek sampah yang sedang terdeteksi
+**Yang dikirim AI server ke `POST /api/realtime-stats` (periodik, per kamera aktif):**
+- `cctv_id` — kamera yang bersangkutan
+- `zona_id` — zona kamera tersebut
+- `active_detections` — jumlah bounding box sampah yang terdeteksi di frame saat ini
+- `confidence_score` — rata-rata skor keyakinan AI (indikator kualitas kamera)
+- `zone_reputation` — skor kebersihan zona (0–100)
+
+**Write-back flush mechanism:**
+Data dari `POST /api/realtime-stats` disimpan di in-memory Map dulu, lalu di-flush ke DB setiap 5 detik via `setInterval`. Ini mencegah query spam ke Supabase.
 
 ---
 
@@ -230,6 +240,15 @@ POST /api/timeline-log           → AI server kirim log deteksi [AI only — pa
 GET  /api/timeline-log           → list history log [Warga+]
 
 Query params GET: ?zona_id=&cctv_id=&from=&to=&limit=
+```
+
+### Realtime Stats 🚧
+
+```
+POST /api/realtime-stats         → AI server kirim stats real-time per kamera [AI only — pakai AI_SERVER_SECRET]
+
+Body: { cctv_id, zona_id, active_detections, confidence_score, zone_reputation }
+→ update in-memory Map → flush ke cctv.active_detections, cctv.confidence_score, zona.zone_reputation tiap 5 detik
 ```
 
 ### CCTV 🚧
