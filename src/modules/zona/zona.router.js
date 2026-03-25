@@ -1,0 +1,14 @@
+import { Router } from "express";
+import { create, list, detail, update, remove } from "./zona.controller.js";
+import { authenticate } from "../../middlewares/auth.middleware.js";
+import { requireRole } from "../../middlewares/role.middleware.js";
+
+const router = Router();
+
+router.get("/",     authenticate, requireRole("warga", "admin", "owner"), list);
+router.get("/:id",  authenticate, requireRole("warga", "admin", "owner"), detail);
+router.post("/",    authenticate, requireRole("owner"),                   create);
+router.patch("/:id",authenticate, requireRole("owner"),                   update);
+router.delete("/:id",authenticate, requireRole("owner"),                  remove);
+
+export default router;
