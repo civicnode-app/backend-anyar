@@ -39,11 +39,21 @@ export const processDetection = ({ cctv_id, zona_id, detections }) => {
     zone_reputation = Math.min(100, zone_reputation + 0.05);
   }
 
-  statsMap.set(cctv_id, { zona_id, active_detections, confidence_score, zone_reputation, dirty: true });
+  statsMap.set(cctv_id, {
+    zona_id,
+    active_detections,
+    confidence_score,
+    zone_reputation,
+    dirty: true,
+  });
 
   // --- Update accumulator ---
   if (!accumulator.has(cctv_id)) {
-    accumulator.set(cctv_id, { zona_id, counts: {}, periodeStart: getCurrentHourStart() });
+    accumulator.set(cctv_id, {
+      zona_id,
+      counts: {},
+      periodeStart: getCurrentHourStart(),
+    });
   }
   const entry = accumulator.get(cctv_id);
   for (const { jenis_objek } of detections) {
@@ -61,7 +71,10 @@ export const flushStats = async () => {
   for (const [cctv_id, stats] of dirtyEntries) {
     await supabase
       .from("cctv")
-      .update({ active_detections: stats.active_detections, confidence_score: stats.confidence_score })
+      .update({
+        active_detections: stats.active_detections,
+        confidence_score: stats.confidence_score,
+      })
       .eq("id", cctv_id);
 
     await supabase
@@ -86,7 +99,10 @@ export const flushHourlyLog = async () => {
   periodeSelesai.setMinutes(0, 0, 0);
 
   for (const [cctv_id, entry] of snapshot.entries()) {
-    const total_deteksi = Object.values(entry.counts).reduce((sum, n) => sum + n, 0);
+    const total_deteksi = Object.values(entry.counts).reduce(
+      (sum, n) => sum + n,
+      0,
+    );
     if (total_deteksi === 0) continue;
 
     await supabase.from("timeline_log").insert({
@@ -119,5 +135,7 @@ export const startFlushIntervals = () => {
   }, msUntilNextHour);
 
   console.log("[detection] Stats flush aktif: tiap 5 detik");
-  console.log(`[detection] Hourly log flush aktif: dalam ${Math.round(msUntilNextHour / 1000 / 60)} menit`);
+  console.log(
+    `[detection] Hourly log flush aktif: dalam ${Math.round(msUntilNextHour / 1000 / 60)} menit`,
+  );
 };

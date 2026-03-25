@@ -6,6 +6,7 @@ import { PORT } from "./config/env.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import authRouter from "./modules/auth/auth.router.js";
 import detectionRouter from "./modules/detection/detection.router.js";
+import timelineLogRouter from "./modules/timeline-log/timeline-log.router.js";
 import { startFlushIntervals } from "./modules/detection/detection.service.js";
 
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.json());
 
 app.use("/api/auth", authRouter);
 app.use("/api/detection", detectionRouter);
+app.use("/api/timeline-log", timelineLogRouter);
 
 app.use(errorHandler);
 
