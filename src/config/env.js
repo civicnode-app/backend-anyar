@@ -8,6 +8,7 @@ const required = [
   "GOOGLE_CLIENT_SECRET",
   "FRONTEND_URL",
   "BACKEND_URL",
+  "AI_SERVER_SECRET",
 ];
 
 for (const key of required) {
