@@ -1,10 +1,9 @@
 -- ============================================================
--- CivicNode AI — Database Schema
+-- CivicNode AI — Database Schema (Lengkap)
 -- Jalankan di: Supabase Dashboard → SQL Editor
 --
--- CATATAN:
--- Tabel `users` dan `staff` diasumsikan sudah ada (dibuat saat
--- setup auth). Script ini hanya mencakup tabel-tabel baru.
+-- Urutan eksekusi penting — jangan diubah urutannya karena
+-- ada foreign key dependencies antar tabel.
 -- ============================================================
 
 
@@ -12,7 +11,36 @@
 -- ENUM TYPES
 -- ------------------------------------------------------------
 
-CREATE TYPE jenis_kamera_enum AS ENUM ('cctv', 'ponsel');
+CREATE TYPE staff_role_enum    AS ENUM ('admin', 'owner');
+CREATE TYPE jenis_kamera_enum  AS ENUM ('cctv', 'ponsel');
+
+
+-- ------------------------------------------------------------
+-- TABEL: users  (Warga — login Google OAuth)
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS users (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email       VARCHAR UNIQUE NOT NULL,
+  full_name   VARCHAR NOT NULL,
+  avatar_url  VARCHAR,
+  created_at  TIMESTAMP DEFAULT now()
+);
+
+
+-- ------------------------------------------------------------
+-- TABEL: staff  (Admin + Owner — login MetaMask)
+-- Avatar di-generate di frontend via Jazzicon dari wallet_address.
+-- Owner pertama harus di-seed manual — tidak ada endpoint register.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS staff (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  wallet_address   VARCHAR UNIQUE NOT NULL,  -- selalu disimpan lowercase
+  full_name        VARCHAR NOT NULL,
+  role             staff_role_enum NOT NULL,
+  created_at       TIMESTAMP DEFAULT now()
+);
 
 
 -- ------------------------------------------------------------
