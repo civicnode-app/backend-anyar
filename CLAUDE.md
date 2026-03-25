@@ -30,10 +30,10 @@ civicnode-backend/
 │   │
 │   ├── modules/
 │   │   ├── auth/              ✅ selesai
+│   │   ├── detection/         🚧 coming soon  ← single endpoint untuk AI server
 │   │   ├── cctv/              🚧 coming soon
 │   │   ├── zona/              🚧 coming soon
-│   │   ├── staff/             🚧 coming soon
-│   │   └── timeline-log/      🚧 coming soon
+│   │   └── staff/             🚧 coming soon
 │   │
 │   ├── utils/
 │   │   ├── jwt.js             → sign + verify JWT
@@ -118,13 +118,16 @@ created_at          TIMESTAMP DEFAULT now()
 id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
 cctv_id         UUID REFERENCES cctv(id) NOT NULL
 zona_id         UUID REFERENCES zona(id) NOT NULL   -- denormalized untuk query cepat
-jenis_objek     VARCHAR NOT NULL                    -- dinamis dari AI: "kaleng kosong", "bungkus permen", dll
-waktu_kejadian  TIMESTAMP NOT NULL
+periode_mulai   TIMESTAMP NOT NULL                  -- awal jam, misal 2026-03-25 21:00:00
+periode_selesai TIMESTAMP NOT NULL                  -- akhir jam, misal 2026-03-25 22:00:00
+ringkasan       JSONB NOT NULL                      -- { "kaleng kosong": 12, "bungkus permen": 5 }
+total_deteksi   INT NOT NULL                        -- total semua jenis dalam periode ini
 created_at      TIMESTAMP DEFAULT now()
 ```
 
 > Immutable — tidak ada endpoint DELETE
-> `jenis_objek` bersifat dinamis, tergantung hasil interpretasi model AI terhadap objek yang terdeteksi
+> Ditulis backend **sekali per jam per kamera** dari hasil akumulasi in-memory
+> `ringkasan` pakai JSONB agar fleksibel mengikuti output model YOLO yang bisa berkembang
 
 ---
 
@@ -133,28 +136,22 @@ created_at      TIMESTAMP DEFAULT now()
 Backend adalah **satu-satunya pintu masuk** bagi frontend — tidak ada komunikasi langsung antara frontend dan AI server.
 
 ```
-AI Server ──(POST /api/timeline-log)────→ Backend → simpan ke DB (timeline_log)
-AI Server ──(POST /api/realtime-stats)──→ Backend → in-memory Map → flush ke DB tiap 5 detik
-Frontend  ──(GET /api/timeline-log)─────→ Backend → ambil history log
+AI Server ──(POST /api/detection)───────→ Backend → (1) update in-memory stats
+                                                      (2) akumulasi hourly log
+Frontend  ──(GET /api/timeline-log)─────→ Backend → ambil history log (hourly summary)
 Frontend  ──(GET /api/zona)─────────────→ Backend → termasuk zone_reputation
 Frontend  ──(GET /api/cctv)─────────────→ Backend → termasuk active_detections, confidence_score
 ```
 
-**Yang dikirim AI server ke `POST /api/timeline-log` (per event deteksi):**
+**Yang dikirim AI server ke `POST /api/detection` (per frame, frequent):**
 - `cctv_id` — kamera yang mendeteksi
 - `zona_id` — zona yang dipantau
-- `jenis_objek` — jenis sampah yang terdeteksi
-- `waktu_kejadian` — timestamp deteksi
+- `detections` — array objek terdeteksi: `[{ jenis_objek, confidence }]` (boleh kosong `[]`)
+- `waktu` — timestamp frame
 
-**Yang dikirim AI server ke `POST /api/realtime-stats` (periodik, per kamera aktif):**
-- `cctv_id` — kamera yang bersangkutan
-- `zona_id` — zona kamera tersebut
-- `active_detections` — jumlah bounding box sampah yang terdeteksi di frame saat ini
-- `confidence_score` — rata-rata skor keyakinan AI (indikator kualitas kamera)
-- `zone_reputation` — skor kebersihan zona (0–100)
-
-**Write-back flush mechanism:**
-Data dari `POST /api/realtime-stats` disimpan di in-memory Map dulu, lalu di-flush ke DB setiap 5 detik via `setInterval`. Ini mencegah query spam ke Supabase.
+**Backend menangani dua hal sekaligus dari satu request:**
+1. **Update real-time stats** — hitung `active_detections`, `confidence_score`, `zone_reputation` → simpan di in-memory Map → flush ke DB tiap **5 detik**
+2. **Akumulasi hourly log** — tambah ke in-memory accumulator per `cctv_id` → flush ke tabel `timeline_log` tiap **1 jam** sebagai satu row ringkasan
 
 ---
 
@@ -233,22 +230,22 @@ GET  /api/auth/me                → Warga+
 POST /api/auth/logout            → Warga+
 ```
 
+### Detection 🚧
+
+```
+POST /api/detection              → AI server kirim data per frame [AI only — pakai x-ai-secret header]
+
+Body: { cctv_id, zona_id, detections: [{ jenis_objek, confidence }], waktu }
+→ (1) update in-memory stats → flush ke cctv & zona tiap 5 detik
+→ (2) akumulasi per jam → tulis ke timeline_log tiap 1 jam
+```
+
 ### Timeline Log 🚧
 
 ```
-POST /api/timeline-log           → AI server kirim log deteksi [AI only — pakai AI_SERVER_SECRET]
-GET  /api/timeline-log           → list history log [Warga+]
+GET  /api/timeline-log           → list history hourly summary [Warga+]
 
-Query params GET: ?zona_id=&cctv_id=&from=&to=&limit=
-```
-
-### Realtime Stats 🚧
-
-```
-POST /api/realtime-stats         → AI server kirim stats real-time per kamera [AI only — pakai AI_SERVER_SECRET]
-
-Body: { cctv_id, zona_id, active_detections, confidence_score, zone_reputation }
-→ update in-memory Map → flush ke cctv.active_detections, cctv.confidence_score, zona.zone_reputation tiap 5 detik
+Query params: ?zona_id=&cctv_id=&from=&to=&limit=
 ```
 
 ### CCTV 🚧

@@ -11,11 +11,11 @@ Fokus: **monitoring**, bukan pencatatan pelanggaran atau penghakiman pelanggar.
 ## Data Flow
 
 ```
-┌─────────────┐   POST /api/timeline-log      ┌─────────────┐
+┌─────────────┐   POST /api/detection         ┌─────────────┐
 │  AI Server  │ ──────────────────────────→   │   Backend   │
-│             │                               │  (Express)  │
-│             │   POST /api/realtime-stats    │             │
-│             │ ──────────────────────────→   │  in-memory  │
+│  (YOLO)     │   (per frame, frequent)        │  (Express)  │
+│             │                               │             │
+│             │                               │  in-memory  │
 │             │                               │  Map + DB   │
 └─────────────┘                               └──────┬──────┘
                                                      │ GET /api/timeline-log
@@ -30,55 +30,62 @@ Fokus: **monitoring**, bukan pencatatan pelanggaran atau penghakiman pelanggar.
 
 Backend adalah **satu-satunya pintu masuk** bagi frontend — tidak ada komunikasi langsung antara frontend dan AI server.
 
-### AI Server → Backend: Event Deteksi
+### AI Server → Backend: Single Detection Endpoint
 
-- Endpoint: `POST /api/timeline-log`
+- Endpoint: `POST /api/detection`
 - Auth: header `x-ai-secret: <AI_SERVER_SECRET>`
-- Payload yang disimpan ke DB:
-
-```json
-{
-  "cctv_id": "uuid",
-  "zona_id": "uuid",
-  "jenis_objek": "kaleng kosong",
-  "waktu_kejadian": "2026-03-24T21:00:00Z"
-}
-```
-
-### AI Server → Backend: Real-time Stats
-
-- Endpoint: `POST /api/realtime-stats`
-- Auth: header `x-ai-secret: <AI_SERVER_SECRET>`
-- Dikirim AI server secara periodik (per kamera aktif)
+- Dikirim AI server per frame (frequent, dari YOLO)
 - Payload:
 
 ```json
 {
   "cctv_id": "uuid",
   "zona_id": "uuid",
-  "active_detections": 3,
-  "confidence_score": 0.92,
-  "zone_reputation": 85.0
+  "detections": [
+    { "jenis_objek": "kaleng kosong", "confidence": 0.91 },
+    { "jenis_objek": "bungkus permen", "confidence": 0.87 }
+  ],
+  "waktu": "2026-03-25T21:43:00Z"
 }
 ```
 
-### Backend: Write-back Cache (Periodic Flush)
+> `detections` boleh array kosong `[]` jika tidak ada objek terdeteksi di frame tersebut.
 
-Real-time stats **tidak langsung ditulis ke DB** — disimpan dulu di in-memory Map, lalu di-flush ke DB setiap 5 detik via `setInterval`. Ini mencegah AI server menyebabkan query spam ke database.
+### Backend: Dua Tanggung Jawab dari Satu Endpoint
+
+**Tanggung jawab 1 — Update real-time stats (in-memory, flush tiap 5 detik):**
 
 ```
-AI Server POST stats → update in-memory Map (instant)
-setInterval(5000)    → flush Map ke DB (batched, hanya kalau ada perubahan)
+AI Server POST /api/detection → hitung stats dari payload:
+  active_detections = detections.length
+  confidence_score  = rata-rata confidence semua item (0 kalau array kosong)
+  zone_reputation   = dihitung berdasarkan frekuensi deteksi (TBD)
+
+→ simpan di in-memory Map (per cctv_id)
+
+setInterval(5000) → flush Map ke DB:
+  active_detections + confidence_score → tabel cctv
+  zone_reputation                      → tabel zona
 ```
 
-- `active_detections` dan `confidence_score` → flush ke tabel `cctv`
-- `zone_reputation` → flush ke tabel `zona`
+**Tanggung jawab 2 — Akumulasi hourly summary (in-memory, flush tiap 1 jam):**
 
-Saat backend restart, in-memory Map kosong — tapi nilai terakhir tetap tersedia dari DB sebagai fallback, dan AI server akan repopulate dalam 5 detik berikutnya.
+```
+AI Server POST /api/detection → tambahkan detections ke in-memory accumulator:
+  accumulator[cctv_id].counts["kaleng kosong"] += 1
+  accumulator[cctv_id].counts["bungkus permen"] += 1
+  ...
+
+setInterval(tiap :00) → flush accumulator ke DB:
+  1 row per kamera → tabel timeline_log
+  reset accumulator untuk jam berikutnya
+```
+
+Saat backend restart, kedua in-memory store kosong — nilai terakhir tetap tersedia dari DB sebagai fallback, dan AI server akan repopulate dalam 5 detik berikutnya.
 
 ### Frontend → Backend
 
-- `GET /api/timeline-log` — history log deteksi (Auth: JWT Warga+)
+- `GET /api/timeline-log` — history hourly summary (Auth: JWT Warga+)
   - Query params: `?zona_id=&cctv_id=&from=&to=&limit=`
 - `GET /api/zona` — list zona termasuk kolom `zone_reputation`
 - `GET /api/cctv` — list kamera termasuk kolom `active_detections` dan `confidence_score`
@@ -125,14 +132,17 @@ Nilai ini diupdate via write-back flush dari in-memory Map setiap 5 detik.
 id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
 cctv_id         UUID REFERENCES cctv(id) NOT NULL
 zona_id         UUID REFERENCES zona(id) NOT NULL   -- denormalized, untuk query cepat tanpa JOIN
-jenis_objek     VARCHAR NOT NULL                    -- dinamis dari AI: "kaleng kosong", "bungkus permen", dll
-waktu_kejadian  TIMESTAMP NOT NULL
+periode_mulai   TIMESTAMP NOT NULL                  -- awal jam, misal 2026-03-25 21:00:00
+periode_selesai TIMESTAMP NOT NULL                  -- akhir jam, misal 2026-03-25 22:00:00
+ringkasan       JSONB NOT NULL                      -- { "kaleng kosong": 12, "bungkus permen": 5 }
+total_deteksi   INT NOT NULL                        -- total semua jenis dalam periode ini
 created_at      TIMESTAMP DEFAULT now()
 ```
 
 **Catatan:**
 - `zona_id` di-denormalize meski bisa di-derive dari `cctv.zona_id` — ini disengaja untuk performa query filter per zona
-- `jenis_objek` bersifat bebas (tidak di-enum) karena tergantung model AI dan dataset training
+- `ringkasan` pakai JSONB agar fleksibel mengikuti output model YOLO yang bisa berkembang
+- Ditulis backend **sekali per jam per kamera** dari hasil akumulasi in-memory
 - Immutable — tidak ada endpoint DELETE
 
 ### Tabel yang dihapus dari desain lama
@@ -181,7 +191,7 @@ AI server menggunakan shared secret untuk autentikasi ke backend (bukan JWT user
 Header: x-ai-secret: <nilai AI_SERVER_SECRET dari .env>
 ```
 
-Backend memvalidasi header ini sebelum menerima data di endpoint `POST /api/timeline-log`.
+Backend memvalidasi header ini sebelum menerima data di endpoint `POST /api/detection`.
 
 ---
 
@@ -190,11 +200,12 @@ Backend memvalidasi header ini sebelum menerima data di endpoint `POST /api/time
 | Module | Status | Catatan |
 |---|---|---|
 | `auth` | ✅ Selesai | Google OAuth + MetaMask |
-| `timeline-log` | 🚧 Next | Terima log dari AI, serve ke frontend |
-| `realtime-stats` | 🚧 Next | Terima stats dari AI, write-back flush ke DB |
+| `detection` | 🚧 Next | Single endpoint AI server — handle stats + hourly log |
 | `cctv` | 🚧 Planned | CRUD kamera |
 | `zona` | 🚧 Planned | CRUD zona |
 | `staff` | 🚧 Planned | CRUD Admin/Owner |
-| ~~`pelanggaran`~~ | ❌ Dihapus | Diganti `timeline-log` |
+| ~~`timeline-log` (POST)~~ | ❌ Dihapus | Digabung ke `detection` |
+| ~~`realtime-stats`~~ | ❌ Dihapus | Digabung ke `detection` |
+| ~~`pelanggaran`~~ | ❌ Dihapus | Diganti `timeline-log` (hourly summary) |
 | ~~`web3`~~ | ❌ Dihapus | Tidak ada blockchain sync |
 | ~~`dashboard`~~ | ❌ Dihapus | Stats tidak lagi bypass ke frontend langsung |
