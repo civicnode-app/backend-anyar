@@ -10,6 +10,7 @@ import timelineLogRouter from "./modules/timeline-log/timeline-log.router.js";
 import zonaRouter from "./modules/zona/zona.router.js";
 import cctvRouter from "./modules/cctv/cctv.router.js";
 import staffRouter from "./modules/staff/staff.router.js";
+import devRouter from "./modules/dev/dev.router.js";
 import { startFlushIntervals } from "./modules/detection/detection.service.js";
 
 const app = express();
@@ -24,6 +25,7 @@ app.use("/api/timeline-log", timelineLogRouter);
 app.use("/api/zona", zonaRouter);
 app.use("/api/cctv", cctvRouter);
 app.use("/api/staff", staffRouter);
+app.use("/api/dev", devRouter);
 
 app.use(errorHandler);
 
