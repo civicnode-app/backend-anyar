@@ -1,5 +1,21 @@
 # Progress Log
 
+## Sesi 2026-03-26
+
+### Yang Sudah Selesai
+
+#### Backend
+- ✅ `cctv.service.js` — tambah `stream_url` ke select query `listCctv`
+
+#### Frontend
+- ✅ `CCTV page` — fetch dari `GET /api/cctv`, stream via MJPEG (`/mjpegfeed?resolusi`), AI toggle + bounding box dummy animasi, dropdown resolusi per kamera
+- ✅ `next.config.ts` — tambah `img-src 'self' data: blob: http:` ke CSP header (izinkan DroidCam stream)
+
+### Yang Masih Perlu Diperbaiki
+- 🐛 **Dropdown resolusi CCTV** — ganti resolusi tidak reload stream secara otomatis. Akar masalah: `<img>` tidak re-mount kalau src-nya berubah karena React hanya update atribut, browser tidak re-fetch MJPEG stream baru. Fix: perlu force remount `<img>` dengan `key` prop yang berubah saat resolusi diganti
+
+---
+
 ## Sesi 2026-03-25
 
 ### Yang Sudah Selesai

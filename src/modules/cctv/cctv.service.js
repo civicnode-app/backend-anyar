@@ -14,7 +14,7 @@ export const createCctv = async ({ nama, zona_id, jenis_kamera, stream_url, ip_a
 export const listCctv = async () => {
   const { data, error } = await supabase
     .from("cctv")
-    .select("id, nama, zona_id, jenis_kamera, ip_address, status, active_detections, confidence_score, created_at, zona(id, nama)")
+    .select("id, nama, zona_id, jenis_kamera, stream_url, ip_address, status, active_detections, confidence_score, created_at, zona(id, nama)")
     .order("created_at", { ascending: true });
 
   if (error) throw error;
