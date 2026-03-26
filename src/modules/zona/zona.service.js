@@ -52,6 +52,19 @@ export const updateZona = async (id, { nama, deskripsi }) => {
 };
 
 export const deleteZona = async (id) => {
+  const { count, error: countError } = await supabase
+    .from("cctv")
+    .select("id", { count: "exact", head: true })
+    .eq("zona_id", id);
+
+  if (countError) throw countError;
+  if (count > 0) {
+    const err = new Error(`Zona tidak bisa dihapus karena masih memiliki ${count} kamera terdaftar.`);
+    err.statusCode = 409;
+    err.code = "ZONA_HAS_CCTV";
+    throw err;
+  }
+
   const { error } = await supabase
     .from("zona")
     .delete()
