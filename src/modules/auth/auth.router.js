@@ -1,18 +1,9 @@
 import { Router } from "express";
-import {
-  getGoogleUrl,
-  googleCallback,
-  getMetaMaskNonce,
-  metamaskLogin,
-  logout,
-  me,
-} from "./auth.controller.js";
+import { getMetaMaskNonce, metamaskLogin, logout, me } from "./auth.controller.js";
 import { authenticate } from "../../middlewares/auth.middleware.js";
 
 const router = Router();
 
-router.get("/google", getGoogleUrl);
-router.get("/google/callback", googleCallback);
 router.get("/nonce", getMetaMaskNonce);
 router.post("/metamask", metamaskLogin);
 router.post("/logout", authenticate, logout);

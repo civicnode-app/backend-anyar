@@ -1,28 +1,5 @@
-import { getGoogleAuthUrl, handleGoogleCallback, getNonce, loginWithMetaMask, getMe } from "./auth.service.js";
+import { getNonce, loginWithMetaMask, getMe } from "./auth.service.js";
 import { success, error } from "../../utils/response.js";
-import { FRONTEND_URL } from "../../config/env.js";
-
-export const getGoogleUrl = (req, res, next) => {
-  try {
-    const url = getGoogleAuthUrl();
-    return res.json({ url });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const googleCallback = async (req, res, next) => {
-  try {
-    const { code } = req.query;
-    if (!code)
-      return error(res, "Missing OAuth code", 400, "MISSING_CODE");
-
-    const access_token = await handleGoogleCallback(code);
-    return res.redirect(`${FRONTEND_URL}/sign-in?access_token=${access_token}`);
-  } catch (err) {
-    next(err);
-  }
-};
 
 export const getMetaMaskNonce = (req, res, next) => {
   try {

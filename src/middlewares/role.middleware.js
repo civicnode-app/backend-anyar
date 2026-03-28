@@ -6,7 +6,7 @@ import { error } from "../utils/response.js";
  *
  * Contoh:
  *   router.post("/", authenticate, requireRole("owner"), createZona);
- *   router.get("/",  authenticate, requireRole("warga", "admin", "owner"), listZona);
+ *   router.get("/",  authenticate, requireRole("admin", "owner"), listZona);
  */
 export const requireRole = (...roles) =>
   (req, res, next) => {
