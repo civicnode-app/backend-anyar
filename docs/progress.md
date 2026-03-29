@@ -1,5 +1,10 @@
 # Progress Log
 
+## Sesi 2026-03-29
+
+### Yang Menunggu Pengerjaan / Blocked
+- ⏳ **Restrukturisasi Database AI Analytics** — Fitur Video Streaming telah resmi dihapus dari ekosistem karena arsitektur diringkus menjadi murni *Headless Data Node*. Konsekuensinya, data yang dikirim oleh AI Server akan berbentuk *metrics* / *analytics value*. Saat ini sedang menunggu hasil *brainstorming* ERD Database Skema bersama AI agent (NotebookLM) agar endpoint `/api/detection` dan tabel `timeline_log` bisa disesuaikan format JSON-nya.
+
 ## Sesi 2026-03-26
 
 ### Yang Sudah Selesai
